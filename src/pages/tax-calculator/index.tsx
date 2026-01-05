@@ -63,7 +63,23 @@ function calculateProgressiveTax(
 ) {
   // Sort brackets from highest to lowest threshold
   const sortedBrackets = brackets.toSorted((a, b) => b.threshold - a.threshold);
-  const bracket = sortedBrackets.find(b => totalAnnual >= b.threshold) ?? brackets[0];
+  const bracketIndex = sortedBrackets.findIndex(b => totalAnnual >= b.threshold);
+  const bracket = sortedBrackets[bracketIndex]! || sortedBrackets[0];
+  const previousBracket = sortedBrackets[bracketIndex + 1];
+  const isFullyInBracket = totalAnnual - monthlySalary >= bracket.threshold;
+
+  if (!isFullyInBracket && previousBracket) {
+    // Split the tax for the portion of the salary that falls within this and previous brackets
+    const taxableInBracket = totalAnnual - bracket.threshold;
+    const taxableInPreviousBracket = monthlySalary - taxableInBracket;
+    const taxInBracket = taxableInBracket * bracket.rate;
+    const taxInPreviousBracket = taxableInPreviousBracket * previousBracket.rate;
+
+    return {
+      amount: taxInBracket + taxInPreviousBracket,
+      percentage: ((taxInBracket + taxInPreviousBracket) / monthlySalary) * 100,
+    };
+  }
 
   return { amount: monthlySalary * bracket.rate, percentage: bracket.rate * 100 };
 }
@@ -74,8 +90,9 @@ export function TaxCalculatorPage() {
     additionalAnnual: undefined,
   });
 
-  const calculations = React.useMemo(() => {
+  const { calculations, totalTaxes } = React.useMemo(() => {
     const results: MonthlyIncomeCalculations[] = [];
+    const totalTaxes = { gpm: 0, vsd: 0, psd: 0 };
 
     if (income.monthly !== undefined) {
       const monthlySalary = income.monthly;
@@ -88,8 +105,12 @@ export function TaxCalculatorPage() {
         const vsdTax = calculateProgressiveTax(totalAnnual, monthlySalary, taxRates.vsd);
         const psdTax = calculateProgressiveTax(totalAnnual, monthlySalary, taxRates.psd);
 
-        const totalTaxes = gpmTax.amount + vsdTax.amount + psdTax.amount;
-        const afterTaxes = monthlySalary - totalTaxes;
+        const totalMonthlyTaxes = gpmTax.amount + vsdTax.amount + psdTax.amount;
+        const afterTaxes = monthlySalary - totalMonthlyTaxes;
+
+        totalTaxes.gpm += gpmTax.amount;
+        totalTaxes.vsd += vsdTax.amount;
+        totalTaxes.psd += psdTax.amount;
 
         results.push({
           totalAnnualBeforeTaxes: totalAnnual,
@@ -115,7 +136,7 @@ export function TaxCalculatorPage() {
       }
     }
 
-    return results;
+    return { calculations: results, totalTaxes };
   }, [income]);
 
   const renderLine = (label: string, render: (calculation: MonthlyIncomeCalculations) => React.ReactNode) => {
@@ -184,6 +205,15 @@ export function TaxCalculatorPage() {
             {renderLine('VSD, EUR', calc => calc.taxes.vsd.amount.toFixed(2))}
             {renderLine('PSD, %', calc => `${calc.taxes.psd.percentage.toFixed(2)}%`)}
             {renderLine('PSD, EUR', calc => calc.taxes.psd.amount.toFixed(2))}
+            {renderLine('Total Taxes, EUR', calc => (
+              <b>{(calc.taxes.gpm.amount + calc.taxes.vsd.amount + calc.taxes.psd.amount).toFixed(2)}</b>
+            ))}
+            <tr className="bg-stone-200">
+              <td className="border border-stone-300 px-3 py-2 text-center">Iš viso mokesčių per metus</td>
+              <td className="border border-stone-300 px-3 py-2 text-center" colSpan={12}>
+                <b>{(totalTaxes.gpm + totalTaxes.vsd + totalTaxes.psd).toFixed(2)} EUR</b>
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
