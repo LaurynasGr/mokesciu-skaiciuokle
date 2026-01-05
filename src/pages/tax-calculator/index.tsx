@@ -65,12 +65,12 @@ function calculateProgressiveTax(
   const sortedBrackets = brackets.toSorted((a, b) => b.threshold - a.threshold);
   const bracket = sortedBrackets.find(b => totalAnnual >= b.threshold) ?? brackets[0];
 
-  return { amount: monthlySalary * bracket.rate, percentage: bracket.rate };
+  return { amount: monthlySalary * bracket.rate, percentage: bracket.rate * 100 };
 }
 
 export function TaxCalculatorPage() {
   const [income, setIncome] = React.useState<Income>({
-    monthly: undefined,
+    monthly: 15000,
     additionalAnnual: undefined,
   });
 
