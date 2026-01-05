@@ -40,6 +40,21 @@ interface Income {
   additionalAnnual?: number;
 }
 
+const months = [
+  'Sausis',
+  'Vasaris',
+  'Kovas',
+  'Balandis',
+  'Gegužė',
+  'Birželis',
+  'Liepa',
+  'Rugpjūtis',
+  'Rugsėjis',
+  'Spalis',
+  'Lapkritis',
+  'Gruodis',
+];
+
 export function TaxCalculatorPage() {
   const [income, setIncome] = React.useState<Income>({
     monthly: undefined,
@@ -53,9 +68,37 @@ export function TaxCalculatorPage() {
       let totalAnnual = income.additionalAnnual ?? 0;
       for (let month = 1; month <= 12; month++) {
         totalAnnual = totalAnnual + monthlySalary;
+
+        // Calculate GPM (income tax)
+        const gpmRate = taxRates.gpm.find(t => totalAnnual >= t.threshold)?.rate ?? taxRates.gpm[2].rate;
+        const gpmAmount = monthlySalary * gpmRate;
+
+        // Calculate VSD (social security)
+        const vsdRate = taxRates.vsd.find(t => totalAnnual >= t.threshold)?.rate ?? taxRates.vsd[1].rate;
+        const vsdAmount = monthlySalary * vsdRate;
+
+        // Calculate PSD (health insurance)
+        const psdRate = taxRates.psd.find(t => totalAnnual >= t.threshold)?.rate ?? taxRates.psd[0].rate;
+        const psdAmount = monthlySalary * psdRate;
+
+        const totalTaxes = gpmAmount + vsdAmount + psdAmount;
+        const afterTaxes = monthlySalary - totalTaxes;
+
         results.push({
           totalAnnualBeforeTaxes: totalAnnual,
-          totalMonthlyAfterTaxes: 0, // Will be calculated below
+          totalMonthlyAfterTaxes: afterTaxes,
+          taxes: {
+            gpm: { amount: gpmAmount, percentage: gpmRate * 100 },
+            vsd: { amount: vsdAmount, percentage: vsdRate * 100 },
+            psd: { amount: psdAmount, percentage: psdRate * 100 },
+          },
+        });
+      }
+    } else {
+      for (let month = 1; month <= 12; month++) {
+        results.push({
+          totalAnnualBeforeTaxes: 0,
+          totalMonthlyAfterTaxes: 0,
           taxes: {
             gpm: { amount: 0, percentage: 0 },
             vsd: { amount: 0, percentage: 0 },
@@ -67,6 +110,19 @@ export function TaxCalculatorPage() {
 
     return results;
   }, [income]);
+
+  const renderLine = (label: string, render: (calculation: MonthlyIncomeCalculations) => React.ReactNode) => {
+    return (
+      <tr className="bg-stone-50">
+        <td className="border border-stone-300 px-3 py-2 font-medium bg-stone-100">{label}</td>
+        {calculations.map((calc, index) => (
+          <td key={index} className="border border-stone-300 px-3 py-2 text-center">
+            {render(calc)}
+          </td>
+        ))}
+      </tr>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -94,8 +150,77 @@ export function TaxCalculatorPage() {
           />
         </div>
       </div>
-      <pre className="text-left bg-gray-100 p-4 rounded">{JSON.stringify(calculations, null, 2)}</pre>
-      <pre className="text-left bg-gray-100 p-4 rounded">{JSON.stringify(taxRates, null, 2)}</pre>
+
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="bg-stone-200">
+              {[null, ...months].map((month, index) => (
+                <th key={index} className="border border-stone-300 px-3 py-2 text-center">
+                  {month}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {renderLine('Atlyginimas į rankas', calc => calc.totalMonthlyAfterTaxes.toFixed(2))}
+            {renderLine('Metinės bruto pajamos', calc => calc.totalAnnualBeforeTaxes.toFixed(2))}
+            {/* Mokesčiai header */}
+            <tr className="bg-stone-200">
+              <td className="border border-stone-300 px-3 py-2 font-bold" colSpan={13}>
+                Mokesčiai
+              </td>
+            </tr>
+            {renderLine('GPM, %', calc => `${calc.taxes.gpm.percentage.toFixed(0)}%`)}
+            {renderLine('GPM, EUR', calc => calc.taxes.gpm.amount.toFixed(2))}
+            {renderLine('VSD, %', calc => `${calc.taxes.vsd.percentage.toFixed(2)}%`)}
+            {renderLine('VSD, EUR', calc => calc.taxes.vsd.amount.toFixed(2))}
+            {renderLine('PSD, %', calc => `${calc.taxes.psd.percentage.toFixed(2)}%`)}
+            {renderLine('PSD, EUR', calc => calc.taxes.psd.amount.toFixed(2))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-8">
+        <h2 className="text-xl font-bold mb-4 text-center">Metiniai rėžiai</h2>
+        <div className="max-w-2xl mx-auto">
+          <table className="w-full border-collapse text-sm [&_th,td]:border [&_th,td]:border-stone-300 [&_th,td]:px-4 [&_th,td]:py-2">
+            <thead>
+              <tr className="bg-stone-200">
+                <th>Metiniai rėžiai</th>
+                <th>Metinės pajamos</th>
+                <th>GPM tarifas</th>
+                <th>VSD tarifas</th>
+              </tr>
+            </thead>
+            <tbody className="[&>tr]:bg-stone-50">
+              <tr>
+                <td>iki 36 VDU</td>
+                <td>0 - {(vdu * 36).toFixed(0)}</td>
+                <td>{(taxRates.gpm[2].rate * 100).toFixed(0)}%</td>
+                <td>{(taxRates.vsd[1].rate * 100).toFixed(2)}%</td>
+              </tr>
+              <tr>
+                <td>nuo 36 iki 60 VDU</td>
+                <td>
+                  {(vdu * 36).toFixed(0)} - {(vdu * 60).toFixed(0)}
+                </td>
+                <td>{(taxRates.gpm[1].rate * 100).toFixed(0)}%</td>
+                <td>{(taxRates.vsd[1].rate * 100).toFixed(2)}%</td>
+              </tr>
+              <tr>
+                <td>nuo 60 VDU</td>
+                <td>virš {(vdu * 60).toFixed(0)}</td>
+                <td>{(taxRates.gpm[0].rate * 100).toFixed(0)}%</td>
+                <td>{(taxRates.vsd[0].rate * 100).toFixed(0)}%</td>
+              </tr>
+            </tbody>
+          </table>
+          <div className="mt-4 text-sm text-gray-600">
+            <p>*Numatytas VDU 2026 metams yra {vdu.toFixed(2)} EUR</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
